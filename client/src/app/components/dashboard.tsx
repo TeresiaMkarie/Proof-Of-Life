@@ -1,17 +1,153 @@
-import { Link } from "react-router";
-import { Heart, Settings, Vault, Bell, PieChart, Activity, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Link, useNavigate } from "react-router";
+import { Contract, RpcProvider } from "starknet";
+import { toast } from "sonner";
+import {
+  Heart,
+  Settings,
+  Vault,
+  Bell,
+  PieChart,
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { motion } from "motion/react";
 import { MobileNav } from "./mobile-nav";
 import { ThemeToggle } from "./theme-toggle";
+import { useWallet } from "../context/WalletContext";
+import { useVaultData } from "../hooks/useVaultData";
+
+// Environment variables for your network
+const HUB_ADDRESS = import.meta.env.VITE_HUB_ADDRESS;
+const RPC_URL = import.meta.env.VITE_RPC_URL;
+
+console.log(RPC_URL);
 
 export function Dashboard() {
-  const lastHeartbeat = new Date(Date.now() - 1000 * 60 * 60 * 24 * 15); // 15 days ago
-  const inactivityDuration = 90; // days
-  const daysRemaining = 75;
-  const progressPercentage = (daysRemaining / inactivityDuration) * 100;
-  const isWarning = daysRemaining <= 30;
+  const navigate = useNavigate();
+  const { account, disconnectWallet, address } = useWallet();
+  const { vaultAssets, totalValue, heirsCount, thresholdDays, isLoading } =
+    useVaultData();
+  const isLoggedIn = !!account;
+
+  // Real on-chain state
+  const [lastPulseTime, setLastPulseTime] = useState<number>(0);
+  const [isFetching, setIsFetching] = useState(true);
+  const [isHeartbeating, setIsHeartbeating] = useState(false);
+
+  // Defaulting to 90 days for UI. In a production app, you'd fetch this from the contract's threshold map.
+  const inactivityDurationSeconds = 90 * 24 * 60 * 60;
+
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!isLoggedIn) {
+      navigate("/");
+    }
+  }, [isLoggedIn, navigate]);
+
+  // Fetch the Last Pulse from Starknet
+  const fetchDashboardData = useCallback(async () => {
+    if (!address) return;
+
+    try {
+      const provider = new RpcProvider({ nodeUrl: RPC_URL });
+
+      // Minimal ABI to read the state
+      const abi = [
+        {
+          name: "get_last_pulse",
+          type: "function",
+          inputs: [
+            {
+              name: "user",
+              type: "core::starknet::contract_address::ContractAddress",
+            },
+          ],
+          outputs: [{ type: "core::integer::u64" }],
+          state_mutability: "view",
+        },
+      ];
+
+      const contract = new Contract({
+        abi: abi,
+        address: HUB_ADDRESS,
+        providerOrAccount: provider,
+      });
+
+      const pulse = await contract.get_last_pulse(address);
+
+      setLastPulseTime(Number(pulse));
+    } catch (error) {
+      console.error("Failed to fetch on-chain data:", error);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [address]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  // Execute Heartbeat Transaction
+  const handleHeartbeat = async () => {
+    if (!account) return;
+    setIsHeartbeating(true);
+    const toastId = toast.loading("Sending heartbeat to Starknet...");
+
+    try {
+      const result = await account.execute({
+        contractAddress: HUB_ADDRESS,
+        entrypoint: "heartbeat",
+        calldata: [],
+      });
+
+      toast.loading("Transaction sent. Waiting for block...", { id: toastId });
+      await account.waitForTransaction(result.transaction_hash);
+
+      toast.success("Heartbeat successful! Your legacy is secured.", {
+        id: toastId,
+      });
+
+      // Refresh the data to show the new countdown!
+      fetchDashboardData();
+    } catch (error: any) {
+      console.error("Heartbeat error:", error);
+      toast.error(error.message || "Failed to send heartbeat", { id: toastId });
+    } finally {
+      setIsHeartbeating(false);
+    }
+  };
+
+  // --- Date Math & Logic ---
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const isSetup = lastPulseTime > 0;
+
+  let daysRemaining = 0;
+  let progressPercentage = 0;
+  let isWarning = false;
+  let lastHeartbeatDate = new Date();
+  let triggerDate = new Date();
+
+  if (isSetup) {
+    const deadlineSeconds = lastPulseTime + inactivityDurationSeconds;
+    const secondsRemaining = deadlineSeconds - nowSeconds;
+
+    daysRemaining = Math.max(0, Math.floor(secondsRemaining / 86400));
+    progressPercentage = Math.max(0, Math.min(100, (daysRemaining / 90) * 100)); // Assuming 90 days max for UI bar
+    isWarning = daysRemaining <= 30;
+
+    lastHeartbeatDate = new Date(lastPulseTime * 1000);
+    triggerDate = new Date(deadlineSeconds * 1000);
+  }
+
+  // Calculate days ago for the UI
+  const daysAgo = isSetup
+    ? Math.floor((nowSeconds - lastPulseTime) / 86400)
+    : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50/30 to-blue-50/40 dark:from-slate-950 dark:via-purple-950/30 dark:to-blue-950/40">
@@ -26,34 +162,49 @@ export function Dashboard() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-6">
-            <Link to="/dashboard" className="text-purple-600 flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              Dashboard
+            <Link
+              to="/dashboard"
+              className="text-purple-600 flex items-center gap-2"
+            >
+              <Activity className="w-4 h-4" /> Dashboard
             </Link>
-            <Link to="/setup" className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2">
-              <Settings className="w-4 h-4" />
-              Setup
+            <Link
+              to="/setup"
+              className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2"
+            >
+              <Settings className="w-4 h-4" /> Setup
             </Link>
-            <Link to="/vault" className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2">
-              <Vault className="w-4 h-4" />
-              Vault
+            <Link
+              to="/vault"
+              className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2"
+            >
+              <Vault className="w-4 h-4" /> Vault
             </Link>
-            <Link to="/notifications" className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2">
-              <Bell className="w-4 h-4" />
-              Notifications
+            <Link
+              to="/notifications"
+              className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2"
+            >
+              <Bell className="w-4 h-4" /> Notifications
             </Link>
-            <Link to="/preview" className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2">
-              <PieChart className="w-4 h-4" />
-              Preview
+            <Link
+              to="/preview"
+              className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 flex items-center gap-2"
+            >
+              <PieChart className="w-4 h-4" /> Preview
             </Link>
           </nav>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:block px-4 py-2 rounded-full bg-emerald-100/60 dark:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-700/60 text-emerald-700 dark:text-emerald-300 text-sm">
-              0x742d...89aB
+            <div className="hidden sm:block px-4 py-2 rounded-full bg-emerald-100/60 dark:bg-emerald-900/60 border border-emerald-200/60 dark:border-emerald-700/60 text-emerald-700 dark:text-emerald-300 text-sm font-mono">
+              {address?.slice(0, 6)}...{address?.slice(-4)}
             </div>
             <ThemeToggle />
-            <Button variant="outline" size="sm" className="rounded-full hidden sm:inline-flex">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full hidden sm:inline-flex"
+              onClick={() => disconnectWallet()}
+            >
               Disconnect
             </Button>
             <MobileNav />
@@ -68,58 +219,134 @@ export function Dashboard() {
           transition={{ duration: 0.5 }}
         >
           <h1 className="text-4xl mb-2">Welcome Back</h1>
-          <p className="text-slate-600 mb-8">Your legacy protection is active and secure.</p>
+          <p className="text-slate-600 mb-8">
+            {isSetup
+              ? "Your legacy protection is active and secure."
+              : "Complete your setup to secure your legacy."}
+          </p>
 
           {/* Main Status Card */}
           <div className="rounded-3xl p-8 md:p-10 bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/60 shadow-lg mb-6 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-200/30 to-blue-200/30 dark:from-purple-800/30 dark:to-blue-800/30 rounded-full blur-3xl"></div>
-            
+
             <div className="relative z-10">
               <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <Heart className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                    <Heart
+                      className={`w-6 h-6 ${isSetup ? "text-purple-600 dark:text-purple-400" : "text-slate-400"}`}
+                    />
                     <h2 className="text-2xl">Last Heartbeat</h2>
                   </div>
-                  <p className="text-3xl text-purple-600 dark:text-purple-400">
-                    {lastHeartbeat.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  </p>
-                  <p className="text-slate-600 dark:text-slate-400 mt-1">15 days ago</p>
+                  {isFetching ? (
+                    <p className="text-xl text-slate-500 animate-pulse">
+                      Checking chain status...
+                    </p>
+                  ) : isSetup ? (
+                    <>
+                      <p className="text-3xl text-purple-600 dark:text-purple-400">
+                        {lastHeartbeatDate.toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                      <p className="text-slate-600 dark:text-slate-400 mt-1">
+                        {daysAgo === 0 ? "Today" : `${daysAgo} days ago`}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xl text-slate-500">Not configured yet</p>
+                  )}
                 </div>
 
-                <Button size="lg" className="rounded-full px-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
-                  <Heart className="w-5 h-5 mr-2" />
-                  Send Heartbeat Now
-                </Button>
+                {isSetup ? (
+                  <Button
+                    size="lg"
+                    onClick={handleHeartbeat}
+                    disabled={isHeartbeating}
+                    className="rounded-full px-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50"
+                  >
+                    {isHeartbeating ? (
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    ) : (
+                      <Heart className="w-5 h-5 mr-2" />
+                    )}
+                    {isHeartbeating ? "Confirming..." : "Send Heartbeat Now"}
+                  </Button>
+                ) : (
+                  <Link to="/setup">
+                    <Button
+                      size="lg"
+                      className="rounded-full px-8 bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                    >
+                      Configure Proof of Life
+                    </Button>
+                  </Link>
+                )}
               </div>
 
               {/* Countdown Timer */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-slate-600 dark:text-slate-400">Time Remaining Before Trigger</span>
-                  <span className="text-2xl">{daysRemaining} days</span>
+              {isSetup && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Time Remaining Before Trigger
+                    </span>
+                    <span className="text-2xl font-medium">
+                      {daysRemaining} days
+                    </span>
+                  </div>
+                  <Progress value={progressPercentage} className="h-3" />
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                    Inheritance will trigger on{" "}
+                    {triggerDate.toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
                 </div>
-                <Progress value={progressPercentage} className="h-3" />
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-                  Inheritance will trigger on {new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </p>
-              </div>
+              )}
 
               {/* Status Indicator */}
-              {isWarning ? (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/60">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-amber-900 dark:text-amber-200">Warning: Less than 30 days remaining</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-300">Please send a heartbeat to reset the countdown.</p>
+              {isSetup ? (
+                isWarning ? (
+                  <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/60">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-amber-900 dark:text-amber-200 font-medium">
+                        Warning: Less than 30 days remaining
+                      </p>
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        Please send a heartbeat to reset the countdown.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200/60 dark:border-emerald-800/60">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-emerald-900 dark:text-emerald-200 font-medium">
+                        All systems active
+                      </p>
+                      <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                        Your legacy protection is working smoothly.
+                      </p>
+                    </div>
+                  </div>
+                )
               ) : (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-200/60 dark:border-emerald-800/60">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                  <AlertTriangle className="w-5 h-5 text-slate-500 flex-shrink-0" />
                   <div>
-                    <p className="text-emerald-900 dark:text-emerald-200">All systems active</p>
-                    <p className="text-sm text-emerald-700 dark:text-emerald-300">Your legacy protection is working smoothly.</p>
+                    <p className="text-slate-900 dark:text-slate-200 font-medium">
+                      Action Required
+                    </p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      You must configure your heirs and duration to activate
+                      protection.
+                    </p>
                   </div>
                 </div>
               )}
@@ -130,22 +357,32 @@ export function Dashboard() {
           <div className="grid md:grid-cols-3 gap-6 mb-6">
             <StatCard
               title="Total Vault Value"
-              value="$127,542.80"
-              subtitle="Across 5 assets"
+              value={
+                isLoading
+                  ? "Loading..."
+                  : `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              }
+              subtitle="Across supported assets"
               icon={<Vault className="w-5 h-5" />}
               gradient="from-purple-500 to-purple-600"
             />
             <StatCard
               title="Heirs Designated"
-              value="3"
-              subtitle="100% allocated"
+              value={
+                heirsCount === null
+                  ? "..."
+                  : heirsCount > 0
+                    ? `${heirsCount} Active`
+                    : "None"
+              }
+              subtitle="Setup required"
               icon={<CheckCircle2 className="w-5 h-5" />}
               gradient="from-blue-500 to-blue-600"
             />
             <StatCard
               title="Inactivity Period"
-              value="90 days"
-              subtitle="With 3 reminders"
+              value={isLoading ? "..." : `${thresholdDays} days`}
+              subtitle="Standard duration"
               icon={<Bell className="w-5 h-5" />}
               gradient="from-indigo-500 to-indigo-600"
             />
@@ -160,7 +397,9 @@ export function Dashboard() {
               >
                 <Vault className="w-8 h-8 mb-3 text-purple-600 dark:text-purple-400" />
                 <h3 className="text-xl mb-2">Manage Vault</h3>
-                <p className="text-slate-600 dark:text-slate-400">Deposit, withdraw, or view your asset balances.</p>
+                <p className="text-slate-600 dark:text-slate-400">
+                  Deposit, withdraw, or view your asset balances.
+                </p>
               </motion.div>
             </Link>
 
@@ -171,7 +410,9 @@ export function Dashboard() {
               >
                 <PieChart className="w-8 h-8 mb-3 text-blue-600 dark:text-blue-400" />
                 <h3 className="text-xl mb-2">View Distribution</h3>
-                <p className="text-slate-600 dark:text-slate-400">See how assets will be divided among heirs.</p>
+                <p className="text-slate-600 dark:text-slate-400">
+                  See how assets will be divided among heirs.
+                </p>
               </motion.div>
             </Link>
           </div>
@@ -181,22 +422,30 @@ export function Dashboard() {
   );
 }
 
-function StatCard({ title, value, subtitle, icon, gradient }: { 
-  title: string; 
-  value: string; 
-  subtitle: string; 
-  icon: React.ReactNode; 
+function StatCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  gradient,
+}: {
+  title: string;
+  value: string;
+  subtitle: string;
+  icon: React.ReactNode;
   gradient: string;
 }) {
   return (
-    <div className="rounded-2xl p-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/60">
+    <div className="rounded-2xl p-6 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/60 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <span className="text-slate-600 dark:text-slate-400">{title}</span>
-        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center text-white`}>
+        <div
+          className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center text-white`}
+        >
           {icon}
         </div>
       </div>
-      <p className="text-3xl mb-1">{value}</p>
+      <p className="text-3xl font-medium mb-1">{value}</p>
       <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
     </div>
   );

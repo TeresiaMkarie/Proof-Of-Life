@@ -1,34 +1,97 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Heart, ArrowDown, ArrowUp, TrendingUp } from "lucide-react";
+import { Heart, ArrowDown, ArrowUp, TrendingUp, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { motion } from "motion/react";
-
-interface Asset {
-  symbol: string;
-  name: string;
-  balance: number;
-  value: number;
-  icon: string;
-}
+import { toast } from "sonner";
+import { useVault } from "../hooks/useVault";
+import { useVaultData } from "../hooks/useVaultData"; // Import the read hook
 
 export function Vault() {
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState("ETH");
+  const [selectedAssetSymbol, setSelectedAssetSymbol] = useState("ETH");
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const assets: Asset[] = [
-    { symbol: "ETH", name: "Ethereum", balance: 12.5, value: 42500, icon: "Ξ" },
-    { symbol: "STRK", name: "Starknet", balance: 15000, value: 30000, icon: "⬡" },
-    { symbol: "USDC", name: "USD Coin", balance: 25000, value: 25000, icon: "$" },
-    { symbol: "USDT", name: "Tether", balance: 18542.8, value: 18542.8, icon: "₮" },
-    { symbol: "DAI", name: "Dai", balance: 11500, value: 11500, icon: "◈" },
-  ];
+  // Write functions (transactions)
+  const { depositAsset, withdrawAsset } = useVault();
 
-  const totalValue = assets.reduce((sum, asset) => sum + asset.value, 0);
+  // Read functions (live blockchain data)
+  const { vaultAssets, totalValue, isLoading, refetch } = useVaultData();
+
+  // Handle the case where the data is still loading
+  const currentAsset =
+    vaultAssets.find((a) => a.symbol === selectedAssetSymbol) ||
+    vaultAssets[0] ||
+    null;
+
+  const handleDeposit = async () => {
+    if (!depositAmount || isNaN(Number(depositAmount)) || !currentAsset) return;
+    setIsProcessing(true);
+    const toastId = toast.loading("Confirming deposit in wallet...");
+
+    try {
+      await depositAsset(
+        currentAsset.address,
+        depositAmount,
+        currentAsset.decimals,
+      );
+      toast.success(
+        `Successfully deposited ${depositAmount} ${currentAsset.symbol}`,
+        { id: toastId },
+      );
+      setDepositAmount("");
+      // Refresh balances immediately after transaction confirms!
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || "Deposit failed", { id: toastId });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || isNaN(Number(withdrawAmount)) || !currentAsset)
+      return;
+    setIsProcessing(true);
+    const toastId = toast.loading("Confirming withdrawal in wallet...");
+
+    try {
+      await withdrawAsset(
+        currentAsset.address,
+        withdrawAmount,
+        currentAsset.decimals,
+      );
+      toast.success(
+        `Successfully withdrew ${withdrawAmount} ${currentAsset.symbol}`,
+        { id: toastId },
+      );
+      setWithdrawAmount("");
+      // Refresh balances immediately!
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || "Withdrawal failed", { id: toastId });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Prevent UI rendering until assets are loaded to avoid index errors
+  if (isLoading || vaultAssets.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-purple-50/30 to-blue-50/40">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+          <p className="text-slate-600 animate-pulse">
+            Scanning vault balances...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50/30 to-blue-50/40">
@@ -52,10 +115,15 @@ export function Vault() {
           <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
             <div>
               <h1 className="text-3xl md:text-4xl mb-2">Asset Vault</h1>
-              <p className="text-slate-600">Securely manage your inheritance assets</p>
+              <p className="text-slate-600">
+                Securely manage your inheritance assets
+              </p>
             </div>
             <Link to="/dashboard" className="w-full sm:w-auto">
-              <Button variant="outline" className="rounded-full w-full sm:w-auto">
+              <Button
+                variant="outline"
+                className="rounded-full w-full sm:w-auto"
+              >
                 Back to Dashboard
               </Button>
             </Link>
@@ -64,13 +132,20 @@ export function Vault() {
           {/* Total Value Card */}
           <div className="rounded-3xl p-8 md:p-10 bg-white/70 backdrop-blur-sm border border-slate-200/60 shadow-lg mb-6 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-200/30 to-blue-200/30 rounded-full blur-3xl"></div>
-            
+
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-3 text-slate-600">
                 <TrendingUp className="w-5 h-5" />
                 <span>Total Vault Value</span>
               </div>
-              <p className="text-5xl mb-2">${totalValue.toLocaleString()}</p>
+              <p className="text-5xl mb-2">
+                $
+                {totalValue.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </p>
+              {/* Note: I kept the fake percentage bump for design, but in prod you'd compare historical values */}
               <p className="text-emerald-600 flex items-center gap-1">
                 <span className="text-xl">+2.4%</span>
                 <span className="text-sm">from last week</span>
@@ -97,11 +172,11 @@ export function Vault() {
                   <div>
                     <Label>Select Asset</Label>
                     <select
-                      className="w-full mt-2 px-4 py-3 rounded-xl border border-slate-200 bg-white"
-                      value={selectedAsset}
-                      onChange={(e) => setSelectedAsset(e.target.value)}
+                      className="w-full mt-2 px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-purple-500"
+                      value={selectedAssetSymbol}
+                      onChange={(e) => setSelectedAssetSymbol(e.target.value)}
                     >
-                      {assets.map(asset => (
+                      {vaultAssets.map((asset) => (
                         <option key={asset.symbol} value={asset.symbol}>
                           {asset.symbol} - {asset.name}
                         </option>
@@ -119,16 +194,22 @@ export function Vault() {
                       className="mt-2 text-lg"
                     />
                     <p className="text-sm text-slate-500 mt-2">
-                      Available: 50.25 {selectedAsset}
+                      Ready to deposit to Vault
                     </p>
                   </div>
 
                   <Button
                     size="lg"
-                    className="w-full rounded-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                    onClick={handleDeposit}
+                    disabled={isProcessing || !depositAmount}
+                    className="w-full rounded-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50"
                   >
-                    <ArrowDown className="w-5 h-5 mr-2" />
-                    Deposit to Vault
+                    {isProcessing ? (
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    ) : (
+                      <ArrowDown className="w-5 h-5 mr-2" />
+                    )}
+                    {isProcessing ? "Processing..." : "Deposit to Vault"}
                   </Button>
                 </div>
               </TabsContent>
@@ -138,11 +219,11 @@ export function Vault() {
                   <div>
                     <Label>Select Asset</Label>
                     <select
-                      className="w-full mt-2 px-4 py-3 rounded-xl border border-slate-200 bg-white"
-                      value={selectedAsset}
-                      onChange={(e) => setSelectedAsset(e.target.value)}
+                      className="w-full mt-2 px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-purple-500"
+                      value={selectedAssetSymbol}
+                      onChange={(e) => setSelectedAssetSymbol(e.target.value)}
                     >
-                      {assets.map(asset => (
+                      {vaultAssets.map((asset) => (
                         <option key={asset.symbol} value={asset.symbol}>
                           {asset.symbol} - {asset.name}
                         </option>
@@ -160,17 +241,24 @@ export function Vault() {
                       className="mt-2 text-lg"
                     />
                     <p className="text-sm text-slate-500 mt-2">
-                      Vault Balance: {assets.find(a => a.symbol === selectedAsset)?.balance} {selectedAsset}
+                      Vault Balance: {currentAsset?.balance.toLocaleString()}{" "}
+                      {currentAsset?.symbol}
                     </p>
                   </div>
 
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full rounded-full border-2"
+                    onClick={handleWithdraw}
+                    disabled={isProcessing || !withdrawAmount}
+                    className="w-full rounded-full border-2 disabled:opacity-50"
                   >
-                    <ArrowUp className="w-5 h-5 mr-2" />
-                    Withdraw from Vault
+                    {isProcessing ? (
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    ) : (
+                      <ArrowUp className="w-5 h-5 mr-2" />
+                    )}
+                    {isProcessing ? "Processing..." : "Withdraw from Vault"}
                   </Button>
                 </div>
               </TabsContent>
@@ -181,7 +269,7 @@ export function Vault() {
           <div className="rounded-3xl p-8 bg-white/70 backdrop-blur-sm border border-slate-200/60 shadow-lg">
             <h2 className="text-2xl mb-6">Asset Balances</h2>
             <div className="space-y-3">
-              {assets.map((asset) => (
+              {vaultAssets.map((asset) => (
                 <motion.div
                   key={asset.symbol}
                   whileHover={{ scale: 1.01 }}
@@ -198,9 +286,17 @@ export function Vault() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg">{asset.balance.toLocaleString()}</p>
+                      <p className="text-lg">
+                        {asset.balance.toLocaleString(undefined, {
+                          maximumFractionDigits: 6,
+                        })}
+                      </p>
                       <p className="text-sm text-slate-600">
-                        ${asset.value.toLocaleString()}
+                        $
+                        {asset.value.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </p>
                     </div>
                   </div>

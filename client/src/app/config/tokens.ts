@@ -1,0 +1,26 @@
+export const SUPPORTED_TOKENS = [
+  {
+    id: "ETH",
+    name: "Ethereum",
+    symbol: "ETH",
+    address:
+      "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+    decimals: 18,
+  },
+  {
+    id: "STRK",
+    name: "Starknet",
+    symbol: "STRK",
+    address:
+      "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    decimals: 18,
+  },
+  {
+    id: "USDC",
+    name: "USD Coin",
+    symbol: "USDC",
+    address:
+      "0x0512feac6339ff7889822cb5aa2a86c848e9d392bb0e3e237c008674feed8343", // Sepolia USDC
+    decimals: 6,
+  },
+];

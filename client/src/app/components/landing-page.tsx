@@ -1,10 +1,30 @@
-import { Link } from "react-router";
-import { Shield, Heart, Clock, Users, Lock, ChevronRight, Sparkles } from "lucide-react";
+import { useEffect } from "react";
+import { Link, useNavigate } from "react-router";
+import {
+  Shield,
+  Heart,
+  Clock,
+  Users,
+  Lock,
+  ChevronRight,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { motion } from "motion/react";
 import { ThemeToggle } from "./theme-toggle";
-
+import { useWallet } from "../context/WalletContext";
 export function LandingPage() {
+  const { account, connectWallet, disconnectWallet, address } = useWallet();
+  const navigate = useNavigate();
+
+  const isLoggedIn = !!account;
+
+  // Wrap the navigation in a useEffect
+  useEffect(() => {
+    if (isLoggedIn) {
+      navigate("/dashboard");
+    }
+  }, [isLoggedIn, navigate]);
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50/30 to-blue-50/40 dark:from-slate-950 dark:via-purple-950/30 dark:to-blue-950/40">
       {/* Header */}
@@ -18,11 +38,15 @@ export function LandingPage() {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Link to="/dashboard">
-              <Button variant="outline" className="rounded-full">
+            {!isLoggedIn && (
+              <Button
+                variant="outline"
+                onClick={() => connectWallet()}
+                className="rounded-full"
+              >
                 Connect Wallet
               </Button>
-            </Link>
+            )}
           </div>
         </div>
       </header>
@@ -39,23 +63,34 @@ export function LandingPage() {
             <Sparkles className="w-4 h-4 text-purple-600" />
             <span className="text-sm text-purple-700">Secured on Starknet</span>
           </div>
-          
+
           <h1 className="text-4xl md:text-7xl mb-6 bg-gradient-to-r from-slate-900 via-purple-900 to-blue-900 bg-clip-text text-transparent">
-            Protect Your Legacy.<br />Secure Their Future.
+            Protect Your Legacy.
+            <br />
+            Secure Their Future.
           </h1>
-          
+
           <p className="text-lg md:text-xl text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            A digital dead man's switch for your crypto assets. Automatically transfer your wealth to loved ones if you become inactive—giving you peace of mind today.
+            A digital dead man's switch for your crypto assets. Automatically
+            transfer your wealth to loved ones if you become inactive—giving you
+            peace of mind today.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/dashboard">
-              <Button size="lg" className="rounded-full px-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 w-full sm:w-auto">
+              <Button
+                size="lg"
+                className="rounded-full px-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 w-full sm:w-auto"
+              >
                 Get Started
                 <ChevronRight className="w-5 h-5 ml-2" />
               </Button>
             </Link>
-            <Button size="lg" variant="outline" className="rounded-full px-8 w-full sm:w-auto">
+            <Button
+              size="lg"
+              variant="outline"
+              className="rounded-full px-8 w-full sm:w-auto"
+            >
               Watch Demo
             </Button>
           </div>
@@ -132,7 +167,9 @@ export function LandingPage() {
           </div>
           <h2 className="text-3xl mb-4">Built on Trust & Security</h2>
           <p className="text-lg text-slate-600 leading-relaxed">
-            Your assets remain under your full control at all times. Smart contracts on Starknet ensure transparent, tamper-proof execution. No third parties. No surprises. Just peace of mind.
+            Your assets remain under your full control at all times. Smart
+            contracts on Starknet ensure transparent, tamper-proof execution. No
+            third parties. No surprises. Just peace of mind.
           </p>
         </div>
       </section>
@@ -147,7 +184,10 @@ export function LandingPage() {
               Join families protecting their digital wealth with confidence.
             </p>
             <Link to="/dashboard">
-              <Button size="lg" className="rounded-full px-8 bg-white text-purple-600 hover:bg-slate-50">
+              <Button
+                size="lg"
+                className="rounded-full px-8 bg-white text-purple-600 hover:bg-slate-50"
+              >
                 Connect Wallet & Start
                 <ChevronRight className="w-5 h-5 ml-2" />
               </Button>
@@ -166,22 +206,44 @@ export function LandingPage() {
   );
 }
 
-function FeatureCard({ icon, title, description, gradient }: { icon: React.ReactNode; title: string; description: string; gradient: string }) {
+function FeatureCard({
+  icon,
+  title,
+  description,
+  gradient,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  gradient: string;
+}) {
   return (
     <motion.div
       whileHover={{ y: -4 }}
       className="rounded-2xl p-8 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} text-white mb-4`}>
+      <div
+        className={`inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} text-white mb-4`}
+      >
         {icon}
       </div>
       <h3 className="text-xl mb-2">{title}</h3>
-      <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{description}</p>
+      <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+        {description}
+      </p>
     </motion.div>
   );
 }
 
-function StepCard({ number, title, description }: { number: string; title: string; description: string }) {
+function StepCard({
+  number,
+  title,
+  description,
+}: {
+  number: string;
+  title: string;
+  description: string;
+}) {
   return (
     <div className="flex gap-6 items-start p-6 rounded-2xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/60">
       <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xl">
@@ -189,7 +251,9 @@ function StepCard({ number, title, description }: { number: string; title: strin
       </div>
       <div>
         <h3 className="text-xl mb-2">{title}</h3>
-        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{description}</p>
+        <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+          {description}
+        </p>
       </div>
     </div>
   );
