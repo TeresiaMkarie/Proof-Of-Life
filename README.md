@@ -14,7 +14,7 @@
 ## 📖 Overview
 **Proof-of-life** is a decentralized, fully gasless social recovery hub. It completely eliminates "seed phrase anxiety" by allowing users to recover their Starknet smart accounts through a trusted circle of Guardians (friends, family, or hardware devices).
 
-Because of Starknet's **Native Account Abstraction**, Proof-of-life doesn't just send notifications—it acts as a programmable vault. Best of all, if a user loses their keys, they usually don't have the crypto to pay for a recovery transaction. Proof-of-life solves this by integrating **Paymasters**, ensuring the recovery process is 100% gasless for both the user and the Guardians.
+Because of Starknet's **Native Account Abstraction**, Proof-of-life doesn't just send notifications it acts as a programmable vault. Best of all, if a user loses their keys, they usually don't have the crypto to pay for a recovery transaction. Proof-of-life solves this by integrating **Paymasters**, ensuring the recovery process is 100% gasless for both the user and the Guardians.
 
 ## 🛑 The Problem
 * **The Seed Phrase Bottleneck:** "Normies" hate writing down 24 words, and hardware wallets get lost or destroyed.
