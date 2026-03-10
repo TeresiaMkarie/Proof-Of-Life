@@ -90,6 +90,9 @@ export function LandingPage() {
               size="lg"
               variant="outline"
               className="rounded-full px-8 w-full sm:w-auto"
+              onClick={() => {
+                window.location.href = "https://youtu.be/HD68O9LAw0k"
+              }}
             >
               Watch Demo
             </Button>
